@@ -1,8 +1,10 @@
 import './styles.css';
+import Board from './Board'
 
 function Marbles() {
+
   return (
-    <p>Hello World!</p>
+    <Board/>
   );
 }
 
