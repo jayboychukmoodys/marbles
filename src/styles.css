@@ -38,19 +38,39 @@
   align-items: center;
 }
 
-.light-red {
+.red {
   /* make the background color a light red */
   background-color: #ffcccc;
 }
 
-.light-blue {
+.blue {
   background-color: #ccccff;
 }
 
-.light-green {
+.green {
   background-color: #ccffcc;
 }
 
-.light-yellow {
+.yellow {
   background-color: rgb(231, 231, 187);
+}
+
+.yellow-marble {
+  background-color: rgb(132, 132, 1);
+}
+
+.red-marble {
+  background-color: rgb(110, 4, 4);
+}
+
+.blue-marble {
+  background-color: rgb(0, 0, 113);
+}
+
+.green-marble {
+  background-color: rgb(3, 106, 3);
+}
+
+.enabled {
+  border: 2px solid yellow;
 }
