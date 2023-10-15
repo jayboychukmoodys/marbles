@@ -3,10 +3,13 @@
 
 import Space from "./Space";
 import MarbleSpace from "./Marble";
-import { players } from './GameSetup'
+import { getNextPlayer, players } from './GameSetup'
 
 const numRows = 19;
 const numCols = 19;
+
+// TODO - create a static 2D array for the board that contains all the static info (space type, space number). Ask chatGPT how to create a static data structure in react/javascript
+// TODO - create a map of the current marbles (key = "row-col", value = marble info) so when I'm rendering the Board I can just look up in O(1) any marble info for that board space
 
 export default function Board({marbles, onMarbleClick}) {
 
@@ -53,10 +56,56 @@ export default function Board({marbles, onMarbleClick}) {
   )
 }
 
-export function getNextBoardPosition(currBoardPosition, numSpaces) {
-  //const [currRow, currCol] = currBoardPosition;
+export function getNextBoardPosition(currBoardPosition, numSpaces, currPlayer) {
+  const playingBoardPositions = getAllPlayingBoardPositions(currPlayer);
 
-  return [0,7];
+  let currIndex = 0;
+
+  while (!isSameBoardPosition(playingBoardPositions[currIndex], currBoardPosition)) currIndex++;
+  
+  const nextBoardPositionIndex = currIndex + numSpaces;
+
+  if (nextBoardPositionIndex >= playingBoardPositions.length) return null;
+
+  return playingBoardPositions[nextBoardPositionIndex];
+}
+
+export function isMarbleInStartHome (marble, currPlayer) {
+  const homeStartLocations = getHomeStartLocations(currPlayer);
+
+  return homeStartLocations.some(([row, col]) => row === marble.row && col === marble.col);
+}
+
+export function getHomeStartLocations(colour) {
+  switch (colour) {
+    case "yellow": return getYellowHomeStartLocations();
+    case "green":  return getGreenHomeStartLocations();
+    case "blue":   return getBlueHomeStartLocations();
+    case "red":    return getRedHomeStartLocations();
+    default:       return null; // TODO - throw an error
+  }
+}
+
+function isSameBoardPosition(boardPosition1, boardPosition2) {
+  const [row1, col1] = boardPosition1;
+  const [row2, col2] = boardPosition2;
+
+  if (row1 === row2 && col1 === col2) return true;
+
+  return false;
+}
+
+function getAllPlayingBoardPositions(currPlayer) {
+  let playingBoardPositions = [];
+
+  for (let i = 0; i < players.length; i++) {
+    playingBoardPositions = playingBoardPositions.concat(getPlayingLocations(currPlayer));
+    currPlayer = getNextPlayer(currPlayer);
+  }
+
+  playingBoardPositions = playingBoardPositions.concat(getHomeEndLocations(currPlayer));
+
+  return playingBoardPositions;
 }
 
 function getYellowHomeStartLocations() {
@@ -73,16 +122,6 @@ function getBlueHomeStartLocations() {
 
 function getRedHomeStartLocations() {
   return [[14, 14], [14, 16], [16, 14], [16, 16]];
-}
-
-export function getHomeStartLocations(colour) {
-  switch (colour) {
-    case "yellow": return getYellowHomeStartLocations();
-    case "green":  return getGreenHomeStartLocations();
-    case "blue":   return getBlueHomeStartLocations();
-    case "red":    return getRedHomeStartLocations();
-    default:       return null; // TODO - throw an error
-  }
 }
 
 function getYellowHomeEndLocations() {
@@ -116,34 +155,34 @@ function getHomeEndLocations(colour) {
   }
 }
 
-function getYellowPlayingLocations() {
-  return [[7,1],[7,2],[7,3],[7,4],[7,5],[7,6],[7,7],[6,7],[5,7],[4,7],[3,7],[2,7],[1,7],[0,7],[0,8],[0,9],[0,10],[0,11]];
+function getYellowStartPlayingLocations() {
+  return [[0,10],[0,11],[1,11],[2,11],[3,11],[4,11],[5,11],[6,11],[7,11],[7,12],[7,13],[7,14],[7,15],[7,16],[7,17],[7,18],[8,18],[9,18]];
 }
 
-function getGreenPlayingLocations() {
-  return [[1,11],[2,11],[3,11],[4,11],[5,11],[6,11],[7,11],[7,12],[7,13],[7,14],[7,15],[7,16],[7,17],[7,18],[8,18],[9,18],[10,18],[11,18]];
+function getGreenStartPlayingLocations() {
+  return [[10,18],[11,18],[11,17],[11,16],[11,15],[11,14],[11,13],[11,12],[11,11],[12,11],[13,11],[14,11],[15,11],[16,11],[17,11],[18,11],[18,10],[18,9]];
 }
 
-function getBluePlayingLocations() {
-  return [[17,7],[16,7],[15,7],[14,7],[13,7],[12,7],[11,7],[11,6],[11,5],[11,4],[11,3],[11,2],[11,1],[11,0],[10,0],[9,0],[8,0],[7,0]];
+function getRedStartPlayingLocations() {
+  return [[18,8],[18,7],[17,7],[16,7],[15,7],[14,7],[13,7],[12,7],[11,7],[11,6],[11,5],[11,4],[11,3],[11,2],[11,1],[11,0],[10,0],[9,0]];
 }
 
-function getRedPlayingLocations() {
-  return [[11,17],[11,16],[11,15],[11,14],[11,13],[11,12],[11,11],[12,11],[13,11],[14,11],[15,11],[16,11],[17,11],[18,11],[18,10],[18,9],[18,8],[18,7]];
+function getBlueStartPlayingLocations() {
+  return [[8,0],[7,0],[7,1],[7,2],[7,3],[7,4],[7,5],[7,6],[7,7],[6,7],[5,7],[4,7],[3,7],[2,7],[1,7],[0,7],[0,8],[0,9]];
 }
 
 function getPlayingLocations(colour) {
   if (colour === "yellow") {
-    return getYellowPlayingLocations();
+    return getYellowStartPlayingLocations();
   }
   else if (colour === "green") {
-    return getGreenPlayingLocations();
+    return getGreenStartPlayingLocations();
   }
   else if (colour === "red") {
-    return getRedPlayingLocations();
+    return getRedStartPlayingLocations();
   }
   else if (colour === "blue") {
-    return getBluePlayingLocations();
+    return getBlueStartPlayingLocations();
   }
 }
 
@@ -167,8 +206,8 @@ export function getHomePlayingLocation(colour) {
   switch (colour) {
     case "yellow": return getYellowHomePlayingLocation();
     case "green":  return getGreenHomePlayingLocation();
-    case "blue":   return getBlueHomePlayingLocation();
     case "red":    return getRedHomePlayingLocation();
+    case "blue":   return getBlueHomePlayingLocation();
     default:       return [-1, -1]; // TODO - throw an error
   }
 }

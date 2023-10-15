@@ -1,7 +1,7 @@
 // Play.js
 // Purpose: defines all game rules and logic
 
-import { getHomeStartLocations, getHomePlayingLocation, getNextBoardPosition } from "./Board";
+import { getHomeStartLocations, getHomePlayingLocation, getNextBoardPosition, isMarbleInStartHome } from "./Board";
 import { getTeammate } from "./GameSetup";
 
 export default function play (card, currPlayer, marbles) {
@@ -35,12 +35,15 @@ export default function play (card, currPlayer, marbles) {
       }
 
       function updateWhereMarblesCanMove () {
-         // for (let marble of marbles[currPlayer]) {
-         //    const nextBoardPosition = getNextBoardPosition ([marble.row, marble.col], getNumSpacesCanMove(card));
-         //    if (nextBoardPosition && !isBoardPositionOccupiedAndUnplayable (marbles, currPlayer, nextBoardPosition)) {
-         //       marble.whereCanMove.push(nextBoardPosition);
-         //    }
-         // }
+         for (let marble of marbles[currPlayer]) {
+            if (!isMarbleInStartHome(marble, currPlayer)) {
+               const nextBoardPosition = getNextBoardPosition ([marble.row, marble.col], getNumSpacesCanMove(card), currPlayer);
+            
+               if (nextBoardPosition && !isBoardPositionOccupiedAndUnplayable (marbles, currPlayer, nextBoardPosition)) {
+                  marble.whereCanMove.push(nextBoardPosition);
+               }  
+            }
+         }
       }
    }
    else
