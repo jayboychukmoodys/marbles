@@ -10,6 +10,7 @@ export default function play (card, currPlayer, marbles) {
    if (card !== "J")
    {
       const marblesToMove = marblesCopy[currPlayer];
+      let countPossibleMoves = 0;
 
       if (isOutCard(card))
       {
@@ -18,7 +19,7 @@ export default function play (card, currPlayer, marbles) {
 
       updateWhereMarblesCanMove ();
 
-      return marblesCopy;
+      return [marblesCopy, countPossibleMoves > 0];
 
       function updateWhereStartHomeMarblesCanMove () {
          const homeStartLocations = getHomeStartLocations(currPlayer);
@@ -30,6 +31,7 @@ export default function play (card, currPlayer, marbles) {
             ) 
             {
                marble.whereCanMove.push(homePlayingLocation);
+               countPossibleMoves++;
             }
          }
       }
@@ -41,6 +43,7 @@ export default function play (card, currPlayer, marbles) {
             
                if (nextBoardPosition && !isBoardPositionOccupiedAndUnplayable (marbles, currPlayer, nextBoardPosition)) {
                   marble.whereCanMove.push(nextBoardPosition);
+                  countPossibleMoves++;
                }  
             }
          }
@@ -49,6 +52,7 @@ export default function play (card, currPlayer, marbles) {
    else
    {
       // TODO
+      return [marblesCopy, false];
    }
 }
 

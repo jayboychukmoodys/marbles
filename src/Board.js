@@ -86,6 +86,12 @@ export function getHomeStartLocations(colour) {
   }
 }
 
+export function allMarblesInEndHome(colour, marbles) {
+  const homeEndLocations = getHomeEndLocations(colour);
+
+  return marbles.every((marble) => homeEndLocations.some(([row, col]) => row === marble.row && col === marble.col));
+}
+
 function isSameBoardPosition(boardPosition1, boardPosition2) {
   const [row1, col1] = boardPosition1;
   const [row2, col2] = boardPosition2;
@@ -129,11 +135,11 @@ function getYellowHomeEndLocations() {
 }
 
 function getGreenHomeEndLocations() {
-  return [[9, 13], [9, 14], [9, 15], [9, 16]];
+  return [[9, 16], [9, 15], [9, 14], [9, 13]];
 }
 
 function getRedHomeEndLocations() {
-  return [[13, 9], [14, 9], [15, 9], [16, 9]];
+  return [[16, 9], [15, 9], [14, 9], [13, 9]];
 }
 
 function getBlueHomeEndLocations() {

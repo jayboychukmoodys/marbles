@@ -2,6 +2,27 @@
   text-align: center;
 }
 
+.game-area {
+  display: flex;
+}
+
+.hand-area {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+
+.hand {
+  flex: 1;
+}
+
+.card {
+  height: 50px;
+  width: 40px;
+}
+
 .board {
   display: grid;
   grid-template-columns: repeat(19, 20px);
@@ -21,6 +42,14 @@
 
   /* hide the direct background image */
   background-image: url('./Images/light-wood-background.webp');
+}
+
+.start-game-area {
+  display: flex;
+}
+
+.start-game {
+  justify-content: center;
 }
 
 .grid-square {
