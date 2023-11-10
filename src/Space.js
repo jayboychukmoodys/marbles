@@ -1,4 +1,4 @@
-function Space({type, number, colour, marbleColour}) {
+function Space({type, number, colour, marbleColour, disabled, onClick}) {
 
    let spaceColour = null;
 
@@ -10,11 +10,18 @@ function Space({type, number, colour, marbleColour}) {
       spaceColour = marbleColour;
    }
 
-   return (
-      <div className={`grid-square board-space ${spaceColour}`}>
+   const classNameVar = `grid-square board-space ${spaceColour}`;
+
+   const returnComponent = disabled ?
+      <div className={classNameVar}>
          {number}
-      </div>
-   )
+      </div> :
+      <button className={classNameVar + ` enabled`} onClick={onClick}>
+         {number}
+      </button> 
+      ;
+
+   return returnComponent;
 }
 
 export default Space;

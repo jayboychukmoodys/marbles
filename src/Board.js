@@ -11,7 +11,7 @@ const numCols = 19;
 // TODO - create a static 2D array for the board that contains all the static info (space type, space number). Ask chatGPT how to create a static data structure in react/javascript
 // TODO - create a map of the current marbles (key = "row-col", value = marble info) so when I'm rendering the Board I can just look up in O(1) any marble info for that board space
 
-export default function Board({marbles, onMarbleClick}) {
+export default function Board({marbles, onMarbleClick, onBoardPositionClick}) {
 
   const board = buildBoard(); // Can I refactor so the board is a constant and doesn't need to be kept as state? The marbles contain all the info needed to render where the marbles go?
 
@@ -20,13 +20,13 @@ export default function Board({marbles, onMarbleClick}) {
   for (let row = 0; row < numRows; row++) {
     for (let col = 0; col < numCols; col++) {
       
-     let [spaceType, spaceColour, spaceNumber, spaceMarble] = getSpaceInfo(board, row, col);
+     let [spaceType, spaceColour, spaceNumber, spaceMarble, spaceAvailableForMarble] = getSpaceInfo(board, row, col);
 
       if (spaceMarble) {
         spaces.push(<MarbleSpace key={`${row}-${col}`} color={`${spaceMarble.colour}-marble`} disabled={spaceMarble.whereCanMove.length === 0} onClick={() => onMarbleClick(spaceMarble)}/>);
       }
       else if (spaceType) {
-        spaces.push(<Space key={`${row}-${col}`} type={spaceType} number={spaceNumber} colour={spaceColour}/> );
+        spaces.push(<Space key={`${row}-${col}`} type={spaceType} number={spaceNumber} colour={spaceColour} disabled={!spaceAvailableForMarble} onClick={() => onBoardPositionClick([row, col])}/> );
       }
       else {
         spaces.push(<div key={`${row}-${col}`} className = {`grid-square`}></div>);
@@ -63,17 +63,30 @@ export function getNextBoardPosition(currBoardPosition, numSpaces, currPlayer) {
 
   while (!isSameBoardPosition(playingBoardPositions[currIndex], currBoardPosition)) currIndex++;
   
-  const nextBoardPositionIndex = currIndex + numSpaces;
+  let nextBoardPositionIndex = currIndex + numSpaces;
 
   if (nextBoardPositionIndex >= playingBoardPositions.length) return null;
+  if (nextBoardPositionIndex < 0) return playingBoardPositions[playingBoardPositions.length - 4 + nextBoardPositionIndex];
 
   return playingBoardPositions[nextBoardPositionIndex];
 }
 
-export function isMarbleInStartHome (marble, currPlayer) {
-  const homeStartLocations = getHomeStartLocations(currPlayer);
+export function isMarbleInStartHome(marble) {
+  const homeStartLocations = getHomeStartLocations(marble.colour);
 
-  return homeStartLocations.some(([row, col]) => row === marble.row && col === marble.col);
+  return isMarbleInOneOfBoardPositions(marble, homeStartLocations);
+}
+
+export function isMarbleInPlayingHome(marble) {
+  const playingHome = getHomePlayingLocation(marble.colour);
+
+  return playingHome[0] === marble.row && playingHome[1] === marble.col;
+}
+
+export function isMarbleInEndHome(marble) {
+  const homeEndLocations = getHomeEndLocations(marble.colour);
+
+  return isMarbleInOneOfBoardPositions(marble, homeEndLocations);
 }
 
 export function getHomeStartLocations(colour) {
@@ -92,13 +105,74 @@ export function allMarblesInEndHome(colour, marbles) {
   return marbles.every((marble) => homeEndLocations.some(([row, col]) => row === marble.row && col === marble.col));
 }
 
-function isSameBoardPosition(boardPosition1, boardPosition2) {
+export function getPlayingHomePositionWithColourInRange(startPosition, endPosition, currPlayer, isMovingForward) {
+  let playingBoardPositions = getAllPlayingBoardPositions(currPlayer);
+
+  const playingHomePositions = players.map ((player) => { return {position: getHomePlayingLocation(player), colour: player}});
+
+  if (!isMovingForward) playingBoardPositions = playingBoardPositions.reverse();
+
+  const startPositionIndex = getIndexOfBoardPosition(startPosition, playingBoardPositions);
+  const endPositionIndex   = getIndexOfBoardPosition(endPosition, playingBoardPositions);
+
+  for (const playingHomePosition of playingHomePositions) {
+    const playingHomePositionIndex = getIndexOfBoardPosition(playingHomePosition.position, playingBoardPositions);
+
+    if (startPositionIndex < playingHomePositionIndex && playingHomePositionIndex <= endPositionIndex) {
+      return playingHomePosition;
+    }
+  }
+  
+  return null;
+}
+
+export function getAllPlayingPositionsInRange(startPosition, endPosition, currPlayer) {
+  let playingBoardPositions = getAllPlayingBoardPositions(currPlayer);
+
+  const startPositionIndex = getIndexOfBoardPosition(startPosition, playingBoardPositions);
+  const endPositionIndex   = getIndexOfBoardPosition(endPosition, playingBoardPositions);
+
+  return playingBoardPositions.slice(startPositionIndex+1, endPositionIndex+1);
+}
+
+export function isSameBoardPosition(boardPosition1, boardPosition2) {
   const [row1, col1] = boardPosition1;
   const [row2, col2] = boardPosition2;
 
   if (row1 === row2 && col1 === col2) return true;
 
   return false;
+}
+
+export function getNumSpacesBetween(boardPosition1, boardPosition2, currPlayer) {
+  // TODO - add some error checking (e.g., if boardPosition1/2 aren't found, then what?)
+  
+  const playingBoardPositions = getAllPlayingBoardPositions(currPlayer);
+
+  let index1 = 0;
+
+  while (!isSameBoardPosition(playingBoardPositions[index1], boardPosition1)) index1++;
+  
+  let index2 = index1;
+  
+  while(!isSameBoardPosition(playingBoardPositions[index2], boardPosition2)) index2++;
+
+  return index2 - index1;
+}
+
+function isMarbleInOneOfBoardPositions(marble, boardPositions) {
+  return boardPositions.some(([row, col]) => marble.row === row && marble.col === col);
+}
+
+function getIndexOfBoardPosition(boardPosition, boardPositions) {
+  for (let index = 0; index < boardPositions.length; index++) {
+    if (isSameBoardPosition(boardPosition, boardPositions[index])) {
+      return index;
+    }
+  }
+
+  return -1;
+  // TODO: throw an error
 }
 
 function getAllPlayingBoardPositions(currPlayer) {
@@ -146,7 +220,7 @@ function getBlueHomeEndLocations() {
   return [[9, 2], [9, 3], [9, 4], [9, 5]];
 }
 
-function getHomeEndLocations(colour) {
+export function getHomeEndLocations(colour) {
   if (colour === "yellow") {
     return getYellowHomeEndLocations();
   }
@@ -218,24 +292,41 @@ export function getHomePlayingLocation(colour) {
   }
 }
 
-function getMarbleOccupyingSpaceFromOneColour (row, col, marbles) {
+function getMarbleInfoForSpaceFromOneColour (row, col, marbles) {
+  let marbleInSpace = null;
+  let canClickedMarbleMoveHere = false;
+
   for (const marble of marbles) {
     if (marble.row === row && marble.col === col) {
-      return marble;
+      marbleInSpace = marble;
+    }
+
+    if (marble.allowUserToSelectWhereCanMove && marble.whereCanMove.some(([rowToMove, colToMove]) => rowToMove === row && colToMove === col)) {
+      canClickedMarbleMoveHere = true;
     }
   }
 
-  return null;
+  return [marbleInSpace, canClickedMarbleMoveHere];
 }
 
-function getMarbleOccupyingSpaceFromAllColours (row, col, marbles) {
-  for (const colour of players) {
-    const marble = getMarbleOccupyingSpaceFromOneColour(row, col, marbles[colour]);
+function getMarbleInfoForSpaceFromAllColours (row, col, marbles) {
+  let marbleInSpace = null;
+  let canClickedMarbleMoveHere = false;
 
-    if (marble) {
-      return marble;
+  for (const colour of players) {
+    const [tempMarbleInSpace, tempCanClickedMarbleMoveHere] = getMarbleInfoForSpaceFromOneColour(row, col, marbles[colour]);
+
+    if (tempMarbleInSpace !== null) {
+      // TODO: ASSERT (marbleInSpace === null);
+      marbleInSpace            = tempMarbleInSpace;
+    }
+    if (tempCanClickedMarbleMoveHere) {
+      // TODO: ASSERT (canClickedMarbleMoveHere === false);
+      canClickedMarbleMoveHere = tempCanClickedMarbleMoveHere;
     }
   }
+
+  return [marbleInSpace, canClickedMarbleMoveHere];
 }
 
 function buildBoardSpaces(marbles) {
@@ -255,8 +346,9 @@ function buildBoardSpaces(marbles) {
     for (const [row, col] of locations) {
 
       let [spaceNumber, spaceType] = getNumberAndType(row, col);
+      let [marbleInSpace, canClickedMarbleMoveHere] = getMarbleInfoForSpaceFromAllColours(row, col, marbles);
 
-      boardSpaces.push({ row: row, col: col, type: spaceType, colour: colour, number: spaceNumber, marble: getMarbleOccupyingSpaceFromAllColours(row, col, marbles)});
+      boardSpaces.push({ row: row, col: col, type: spaceType, colour: colour, number: spaceNumber, marble: marbleInSpace, isAvailableForMarble: canClickedMarbleMoveHere});
     };
   }
 
@@ -282,7 +374,10 @@ function buildHomeStartSpaces(marbles) {
     const locations = getHomeStartLocations(colour);
 
     for (const [row, col] of locations) {
-      homeStartSpaces.push({ row: row, col: col, type: `home-start`, colour: colour, number: null, marble: getMarbleOccupyingSpaceFromOneColour(row, col, marbles[colour])});
+      // eslint-disable-next-line
+      const [marbleInSpace, _] = getMarbleInfoForSpaceFromOneColour(row, col, marbles[colour]);
+
+      homeStartSpaces.push({ row: row, col: col, type: `home-start`, colour: colour, number: null, marble: marbleInSpace, isAvailableForMarble: false});
     };
   }
 }
@@ -302,7 +397,9 @@ function buildHomeEndSpaces(marbles) {
     const locations = getHomeEndLocations(colour);
 
     for (const [row, col] of locations) {
-      homeEndSpaces.push({ row: row, col: col, type: `home-end`, colour: colour, number: null, marble: getMarbleOccupyingSpaceFromOneColour(row, col, marbles[colour])});
+      let [marbleInSpace, canClickedMarbleMoveHere] = getMarbleInfoForSpaceFromOneColour(row, col, marbles[colour]);
+
+      homeEndSpaces.push({ row: row, col: col, type: `home-end`, colour: colour, number: null, marble: marbleInSpace, isAvailableForMarble: canClickedMarbleMoveHere});
     };
   }
 }
@@ -424,7 +521,7 @@ function getSpaceInfo(board, row, col) {
   for (const spaceSet of board) {
     for (const space of spaceSet) {
       if (space.row === row && space.col === col) {
-        return [space.type, space.colour, space.number, space.marble];
+        return [space.type, space.colour, space.number, space.marble, space.isAvailableForMarble];
       }
     }
   }

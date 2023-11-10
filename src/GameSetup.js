@@ -27,3 +27,12 @@ export const players = [
     default:       return null; // TODO - throw an error
   }
  }
+
+ export function areOnOpposingTeams(player1, player2) {
+  if (player1 === "yellow" || player1 === "red") 
+  {
+    return player2 === "green" || player2 === "blue";
+  }
+  
+  return player2 === "yellow" || player2 === "red";
+ }
