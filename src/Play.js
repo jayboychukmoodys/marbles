@@ -1,35 +1,39 @@
 // Play.js
 // Purpose: defines all game rules and logic
 
-import { getHomePlayingLocation, getNextBoardPosition, isMarbleInStartHome, getPlayingHomePositionWithColourInRange, isSameBoardPosition, getHomeEndLocations, isMarbleInPlayingHome, isMarbleInEndHome } from "./Board";
-import { players, getTeammate } from "./GameSetup";
+import { getHomePlayingLocation, getNextBoardPosition, isMarbleInStartHome, getPlayingHomePositionWithColourInRange, isSameBoardPosition, getHomeEndLocations, isMarbleInPlayingHome, isMarbleInEndHome, isMarbleInOneOfBoardPositions, allMarblesInEndHome, getNumAvailableSpacesInEndHome } from "./Board";
+import { players, getTeammate, UpdateMarbles } from "./GameSetup";
 import { areEqual } from "./Marble"
 
-export default function playAndGetNumberOfPossibleMoves (cardRank, currPlayer, marbles) {
+export default function calculateMoves (cardRank, currPlayer, marbles, updateMarbles) {
+   let currMarbleColourToMove = allMarblesInEndHome(currPlayer, marbles[currPlayer]) ? getTeammate(currPlayer) : currPlayer;
+
    let countPossibleMoves = 0;
 
    if (cardRank !== "J")
    {
       if (isOutCard(cardRank)) {
-         countPossibleMoves += updateWhereStartHomeMarblesCanMove (currPlayer, marbles);
+         countPossibleMoves += calculateMovesFromStartHomeMarbles (currMarbleColourToMove, marbles, updateMarbles);
       }
 
-      countPossibleMoves += updateWhereMarblesCanMove (getNumSpacesCanMove(cardRank), currPlayer, marbles, cardRank === "7");
+      countPossibleMoves += calculateMovesFromMarblesInPlay (getNumSpacesCanMove(cardRank), currMarbleColourToMove, marbles, cardRank === "7", updateMarbles);
 
-      return countPossibleMoves > 0;
+      return countPossibleMoves;
    }
    else // cardRank === "J"
    {
-      const boardPositionsWithAMarble = getPlayingBoardPositionsWithAMarbleForJack(marbles, currPlayer);
+      const boardPositionsWithAMarble = getPlayingBoardPositionsWithAMarbleForJack(marbles, currMarbleColourToMove);
 
-      const countPossibleMoves = updateWhereMarblesCanMoveFromJack(marbles, boardPositionsWithAMarble, currPlayer);
+      const countPossibleMoves = calculateMovesFromMarblesInPlayForJack(marbles, boardPositionsWithAMarble, currMarbleColourToMove, updateMarbles);
 
       return countPossibleMoves;
    }
 }
 
 export function playRemainderOfCard (numSpaces, currPlayer, marbles) {
-   const countPossibleMoves = updateWhereMarblesCanMove (numSpaces, currPlayer, marbles, true /*isCardASeven*/);
+   let currMarbleColourToMove = allMarblesInEndHome(currPlayer, marbles[currPlayer]) ? getTeammate(currPlayer) : currPlayer;
+
+   const countPossibleMoves = calculateMovesFromMarblesInPlay (numSpaces, currMarbleColourToMove, marbles, true /*isCardASeven*/, UpdateMarbles.YES);
    
    return countPossibleMoves > 0;
 }
@@ -38,15 +42,15 @@ function canMarbleBeMovedWithJack(marble, currPlayer) {
    return !isMarbleInStartHome(marble) && (!isMarbleInPlayingHome(marble) || marble.colour === currPlayer) && !isMarbleInEndHome(marble);
 }
 
-function updateWhereMarblesCanMoveFromJack(marbles, boardPositionsWithAMarble, currPlayer) {
+function calculateMovesFromMarblesInPlayForJack(marbles, boardPositionsWithAMarble, currPlayer, updateMarbles) {
    let countPossibleMoves = 0;
    
    for (const player of players) {
       for (const marble of marbles[player]) {
          if (canMarbleBeMovedWithJack(marble, currPlayer)) {
             for (const boardPosition of boardPositionsWithAMarble) {
-               if (boardPosition.marbleColour !== marble.colour ) {
-                  marble.whereCanMove.push(boardPosition.position);
+               if (boardPosition.marbleColour !== marble.colour) { // can't switch 2 marbles of the same colour
+                  if (updateMarbles) marble.whereCanMove.push(boardPosition.position);
                   countPossibleMoves++;
                }
             }
@@ -71,17 +75,13 @@ function getPlayingBoardPositionsWithAMarbleForJack(marbles, currPlayer) {
    return playingBoardPositionsWithAMarble;
 }
 
-function updateWhereStartHomeMarblesCanMove (currPlayer, marbles) {
+function calculateMovesFromStartHomeMarbles (currPlayer, marbles, updateMarbles) {
    let countPossibleMoves = 0;
 
-   const homePlayingLocation = getHomePlayingLocation(currPlayer);
-
-   const marblesToMove = marbles[currPlayer];
-
-   for (const marble of marblesToMove) {
-      if (isMarbleInStartHome(marble) && !isBoardPositionOccupiedAndUnplayable(marbles, currPlayer, homePlayingLocation)) 
+   for (const marble of marbles[currPlayer]) {
+      if (isMarbleInStartHomeAndPlayable(marble, marbles, currPlayer)) 
       {
-         marble.whereCanMove.push(homePlayingLocation);
+         if (updateMarbles) marble.whereCanMove.push(getHomePlayingLocation(currPlayer));
          countPossibleMoves++;
       }
    }
@@ -89,35 +89,65 @@ function updateWhereStartHomeMarblesCanMove (currPlayer, marbles) {
    return countPossibleMoves;
 }
 
-function updateWhereMarblesCanMove (numSpaces, currPlayer, marbles, isCardASeven) {
+function isMarbleInStartHomeAndPlayable(marble, marbles, currPlayer) {
+   return isMarbleInStartHome(marble) && !isBoardPositionOccupiedAndUnplayable(marbles, currPlayer, getHomePlayingLocation(currPlayer), true /*countTeammate*/);
+}
+
+function calculateMovesFromMarblesInPlay (numSpaces, currPlayer, marbles, isCardASeven, updateMarbles, isTeammatesMarbles = false) {
    let countPossibleMoves = 0;
+   let countMarblesThatMoveIntoEndHome = 0;
 
    if (!isCardASeven) {
-      addBoardPositionToWhereCanMove(numSpaces);
+      calculateMoves(numSpaces);
    }
    else { // isCardASeven
       for (let space=1; space <= numSpaces; space++) {
-         addBoardPositionToWhereCanMove(space);
+         calculateMoves(space);
       }
 
       if (countPossibleMoves < numSpaces) {
+         if (isForOwnMarbles() && canMoveAllOwnMarblesIntoEndHome()) {
+            return calculateMovesFromMarblesInPlay (numSpaces - countPossibleMoves, getTeammate(currPlayer), marbles, isCardASeven, UpdateMarbles.NO, true /* isTeammatesMarbles */);
+         }
+
          return 0;
       }
    }
 
    return countPossibleMoves;
 
-   function addBoardPositionToWhereCanMove(numSpaces) {
+   function calculateMoves(numSpacesThisRound) {
       for (let marble of marbles[currPlayer]) {
          if (!isMarbleInStartHome(marble)) {
-            const nextBoardPosition = getNextBoardPosition ([marble.row, marble.col], numSpaces, currPlayer);
-         
-            if (nextBoardPosition && canMarbleMoveToNextBoardPosition(marble, marbles, nextBoardPosition, currPlayer, numSpaces >= 0)) {
-               marble.whereCanMove.push(nextBoardPosition);
-               countPossibleMoves++;
-            }  
+            const currBoardPosition = [marble.row, marble.col];
+            const nextBoardPosition = getNextBoardPosition (currBoardPosition, numSpacesThisRound, currPlayer)
+
+            if (nextBoardPosition !== null) {
+               const canMarbleMoveNow = canMarbleMoveToNextBoardPosition(marble, marbles, nextBoardPosition, currPlayer, numSpacesThisRound >= 0, isCardASeven, updateMarbles);
+               const canMarbleNotMoveNowButWillBeAbleToMoveWith7 = canMarbleMoveNow ? false : canMarbleMoveToNextBoardPosition(marble, marbles, nextBoardPosition, currPlayer, numSpacesThisRound >= 0, isCardASeven, UpdateMarbles.NO);
+            
+               if (canMarbleMoveNow || canMarbleNotMoveNowButWillBeAbleToMoveWith7) {
+                  if (updateMarbles && canMarbleMoveNow) {
+                     marble.whereCanMove.push(nextBoardPosition);
+                  }
+
+                  if (!isInEndHome(currBoardPosition, currPlayer) && isInEndHome(nextBoardPosition, currPlayer)) {
+                     countMarblesThatMoveIntoEndHome++;
+                  }
+
+                  countPossibleMoves++;
+               }
+            }
          }
       }
+   }
+
+   function isForOwnMarbles() {
+      return !isTeammatesMarbles;
+   }
+
+   function canMoveAllOwnMarblesIntoEndHome() {
+      return countMarblesThatMoveIntoEndHome === getNumAvailableSpacesInEndHome(currPlayer, marbles[currPlayer]);
    }
 }
 
@@ -151,10 +181,9 @@ function getNumSpacesCanMove(cardRank) {
 }
 
 // Rule: a marble cannot move to a space that is occupied by one of it's own or one of it's teammates marbles
-function isBoardPositionOccupiedAndUnplayable(marbles, currPlayer, boardPosition) {
-   const teammate                             = getTeammate(currPlayer);
+function isBoardPositionOccupiedAndUnplayable(marbles, currPlayer, boardPosition, countTeammate) {
    const [boardPositionRow, boardPositionCol] = boardPosition;
-   const ownTeamsMarbles                      = marbles[currPlayer].concat(marbles[teammate]);
+   let ownTeamsMarbles = countTeammate ? marbles[currPlayer].concat(marbles[getTeammate(currPlayer)]) : marbles[currPlayer];
 
    for (const marble of ownTeamsMarbles) {
       if (marble.row === boardPositionRow && marble.col === boardPositionCol) {
@@ -165,10 +194,10 @@ function isBoardPositionOccupiedAndUnplayable(marbles, currPlayer, boardPosition
    return false;
 }
 
-function canMarbleMoveToNextBoardPosition(marble, marbles, nextBoardPosition, currPlayer, isCardMovingForward) {
-   return !isBoardPositionOccupiedAndUnplayable (marbles, currPlayer, nextBoardPosition)
+function canMarbleMoveToNextBoardPosition(marble, marbles, nextBoardPosition, currPlayer, isCardMovingForward, isCardASeven, updateMarbles) {
+   return !isBoardPositionOccupiedAndUnplayable (marbles, currPlayer, nextBoardPosition, true /*countTeammate*/)
        && !blockedByOtherMarbleInPlayingHome (marble, marbles, nextBoardPosition, currPlayer, isCardMovingForward)
-       && !blockedByOtherMarbleInEndHome (marble, marbles, nextBoardPosition, currPlayer)
+       && ((isCardASeven && !updateMarbles) || !blockedByOtherMarbleInEndHome (marble, marbles, nextBoardPosition))
        && !isMarbleInEndHomeAndNextPositionNotInEndHome(marble, nextBoardPosition)
       ;
 }
@@ -194,12 +223,13 @@ function blockedByOtherMarbleInEndHome (marbleToMove, allMarbles, endPosition) {
    if (isInEndHome(endPosition, currPlayer)) {
       const endHomePositions = getHomeEndLocations(currPlayer);
 
-      const indexOfEndPosition = getIndexOfPosition(endPosition, endHomePositions);
+      const indexOfStartPosition = getIndexOfPosition([marbleToMove.row, marbleToMove.col], endHomePositions);
+      const indexOfEndPosition   = getIndexOfPosition(endPosition, endHomePositions);
 
-      const endHomePositionsToSearch = endHomePositions.slice(0, indexOfEndPosition + 1);
-      
+      const endHomePositionsToSearch = indexOfStartPosition !== null ? endHomePositions.slice(indexOfStartPosition + 1, indexOfEndPosition + 1) : endHomePositions.slice(0, indexOfEndPosition + 1);
+
       for (const marble of allMarbles[currPlayer]) {
-         if (!areEqual(marble, marbleToMove) && endHomePositionsToSearch.some(([row, col]) => marble.row === row && marble.col === col)) {
+         if (!areEqual(marble, marbleToMove) && isMarbleInOneOfBoardPositions(marble, endHomePositionsToSearch)) {
             return true;
          }
       }
@@ -229,4 +259,8 @@ function getIndexOfPosition(positionToFind, positionsArray) {
    }
 
    return null;
+}
+
+export function getMarblesFor(player, marbles) {
+   return allMarblesInEndHome(player, marbles) ? marbles[getTeammate(player)] : marbles[player];
 }

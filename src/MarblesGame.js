@@ -1,15 +1,16 @@
 import { useState, useRef } from 'react';
 import './styles.css';
 import Board, { getHomeStartLocations, allMarblesInEndHome, getNumSpacesBetween, getAllPlayingPositionsInRange } from './Board'
-import playAndGetNumberOfPossibleMoves, { playRemainderOfCard } from './Play'
-import { players, getNextPlayer, getTeammate, areOnOpposingTeams } from './GameSetup'
+import calculateMoves, { playRemainderOfCard } from './Play'
+import { players, getNextPlayer, getTeammate, areOnOpposingTeams, UpdateMarbles } from './GameSetup'
 import { areEqual } from './Marble'
 import Card, { areEqualCards } from './Card'
 import Hand from './Hand'
 import Deck from './Deck'
 
 // Task list:
-// - Add all the rules (e.g., have to play a playable card rule; when you finish you play the other players marbles)
+// - Finish the game when someone wins
+// - the marbles look a little smaller than the open spaces
 // - Put the last played card in the middle of the board - this is important for the Joker where the card is played automatically. Right now you just can't see the card played
 // - Update the images of the cards to actual card images (see the svg images online)
 // - fix the board to the screen so it doesn't keep moving every time cards are played
@@ -21,6 +22,8 @@ import Deck from './Deck'
 // - if there's only one possible move, just make it automatically instead of making the player do it
 // - create a home screen where user can select rules (i.e., which colour starts, what to with jokers)
 // - make it hosted online and allow multiplayer
+// - refactor code to Typescript
+// - refactor code to use clsx for conditional classNames
 
 const initialMarbles = players.reduce((marblesDict, player) => {
   marblesDict[player] = getHomeStartLocations(player).map(([marbleRow, marbleCol]) => ({
@@ -29,6 +32,7 @@ const initialMarbles = players.reduce((marblesDict, player) => {
     colour: player,
     whereCanMove: [],
     allowUserToSelectWhereCanMove: false,
+    isInPathOfOpposingTeams7: false,
   }));
   return marblesDict;
 }, {});
@@ -38,8 +42,8 @@ const initialHands = players.reduce((handsDict, player) => {
   return handsDict;
 }, {});
 
-const extraCardPlayedImmediatelyForRedJoker   = true;
-const extraCardPlayedImmediatelyForBlackJoker = true;
+const extraCardPlayedImmediatelyForRedJoker   = false;
+const extraCardPlayedImmediatelyForBlackJoker = false;
 
 const dealingSequence = [5, 4, 4];
 
@@ -55,6 +59,7 @@ function MarblesGame() {
   const selectedMarble  = useRef(null);
   const playedCard      = useRef(null);
   const spacesLeftIn7   = useRef(0); // TODO - refactor this. Shouldn't be this dependency bt playedCard and spacesLeftIn7
+  const disableOtherMarbles = useRef(false);
 
   function startGame() {
     resetDealAndDeck("yellow");
@@ -63,16 +68,48 @@ function MarblesGame() {
 
   /* FOR TESTING PURPOSES */
   function implementTest() {
-    marbles["green"][0].row = 9;
-    marbles["green"][0].col = 14;
+    marbles["green"][1].row = 9;
+    marbles["green"][1].col = 14;
+    marbles["green"][2].row = 9;
+    marbles["green"][2].col = 15;
+    marbles["green"][3].row = 9;
+    marbles["green"][3].col = 16;
+    marbles["green"][0].row = 8;
+    marbles["green"][0].col = 18;
 
     setMarbles({...marbles});
 
-    hands["green"][0] = new Card("4", "S");
+    hands["green"][0] = new Card("7", "S");
+    hands["green"][1] = new Card("A", "S");
 
     setHands({...hands});
   }
   /* FOR TESTING PURPOSES */
+
+  function onCardClick(card) {
+    playCard(card);
+  }
+
+  function playCard(card) {
+    playedCard.current = card;
+    
+    if (card.isPlayable) {
+      const cardRank = card.getRank();
+
+      if (cardRank === "7") spacesLeftIn7.current = 7;
+
+      calculateMoves(cardRank, player.current, marbles, UpdateMarbles.YES);
+
+      removeCardFromHand(card, hands[player.current]);
+
+      setMarbles({ ...marbles });
+    }
+    else {
+      removeCardFromHand(card, hands[player.current]);
+
+      prepareNextTurn();
+    }
+  }
 
   function onMarbleClick(marble) {
     for (const updatedMarble of marbles[marble.colour]) {
@@ -80,7 +117,8 @@ function MarblesGame() {
         if (isCurrCardJack()) {
           if (selectingFirstMarbleForJack()) {
             selectedMarble.current = marble;
-            marble.whereCanMove = [];
+            
+            resetWhereCanMoveLocationsForThisColour(marble.colour);
           }
           else { // selecting second marble
             swapCurrentMarbleWith(marble);
@@ -88,8 +126,17 @@ function MarblesGame() {
             prepareNextTurn();
           }
         }
-        else {
+        else if (selectedMarble.current === null) {
           updateMarblesBasedOnWhereCanMovePositions(updatedMarble);
+        }
+        else { // when marble played with a 7 clicks on a marble to kill it
+          const newPosition = [marble.row, marble.col];
+
+          killMarble(marble, marbles);
+
+          marble.isInPathOfOpposingTeams7 = false;
+
+          moveMarbleToPositionWith7(newPosition);
         }
 
         break;
@@ -97,6 +144,50 @@ function MarblesGame() {
     }
 
     setMarbles({...marbles});
+  }
+
+  function resetWhereCanMoveLocationsForThisColour(colour) {
+    for (const marble of marbles[colour]) {
+      marble.whereCanMove = [];
+    }
+  }
+
+  function onBoardPositionClick(newPosition) {
+    moveMarbleToPositionWith7(newPosition);
+  }
+
+  function moveMarbleToPositionWith7(position) {
+    const oldPosition = [selectedMarble.current.row, selectedMarble.current.col];
+
+    selectedMarble.current.row = position[0];
+    selectedMarble.current.col = position[1];
+
+    killAllOpposingMarblesBetweenPositions(oldPosition, position, player.current, marbles);
+
+    spacesLeftIn7.current -= getNumSpacesBetween(oldPosition, position, player.current);
+
+    resetWhereCanMoveLocations();
+
+    selectedMarble.current = null;
+    disableOtherMarbles.current = false;
+
+    // TODO: ASSERT (spacesLeftIn7.current >= 0);
+
+    if (spacesLeftIn7.current > 0) {
+      const isCardPlayable = playRemainderOfCard(spacesLeftIn7.current, player.current, marbles);
+      
+      if (isCardPlayable) {
+        setMarbles({...marbles});
+      }
+      else {
+        prepareNextTurn();
+      }
+    }
+    else {
+      prepareNextTurn();
+
+      setMarbles({...marbles});
+    }
   }
 
   function isCurrCardJack() {
@@ -107,64 +198,6 @@ function MarblesGame() {
     const tempPosition = [marble.row, marble.col];
     [marble.row, marble.col] = [selectedMarble.current.row, selectedMarble.current.col];
     [selectedMarble.current.row, selectedMarble.current.col] = tempPosition;
-  }
-
-  function onCardClick(card) {
-    playCard(card);
-  }
-
-  function playCard(card) {
-    const cardRank = card.getRank();
-
-    playedCard.current = card;
-
-    if (cardRank === "7") spacesLeftIn7.current = 7;
-
-    const isCardPlayable = playAndGetNumberOfPossibleMoves(cardRank, player.current, marbles);
-
-    removeCardFromHand(card, hands[player.current]);
-
-    setHands({ ...hands });
-
-    if (isCardPlayable) {
-      setMarbles({ ...marbles });
-    }
-
-    else {
-      prepareNextTurn();
-    }
-  }
-
-  function onBoardPositionClick(newPosition) {
-    const oldPosition = [selectedMarble.current.row, selectedMarble.current.col];
-
-    selectedMarble.current.row = newPosition[0];
-    selectedMarble.current.col = newPosition[1];
-
-    killAllOpposingMarblesBetweenPositions(oldPosition, newPosition, player.current, marbles);
-
-    spacesLeftIn7.current -= getNumSpacesBetween(oldPosition, newPosition, player.current);
-
-    resetWhereCanMoveLocations();
-
-    // TODO: ASSERT (numSpacesLeft >= 0);
-
-    if (spacesLeftIn7.current > 0) {
-      const isCardPlayable = playRemainderOfCard(spacesLeftIn7.current, player.current, marbles);
-      
-      if (isCardPlayable) {
-        setMarbles({...marbles});
-      }
-      else
-      {
-        prepareNextTurn();
-      }
-    }
-    else {
-      prepareNextTurn();
-
-      setMarbles({...marbles});
-    }
   }
 
   function resetDealAndDeck(newDealer) {
@@ -206,7 +239,7 @@ function MarblesGame() {
   }
 
   function updateMarblesBasedOnWhereCanMovePositions (marble) {
-    if (marble.whereCanMove.length === 1) {
+    if (marble.whereCanMove.length === 1 && playedCard.current.getRank() !== "7") {
       const [newRow, newCol] = marble.whereCanMove[0];
  
       marble.row = newRow;
@@ -222,22 +255,44 @@ function MarblesGame() {
       marble.allowUserToSelectWhereCanMove = true;
 
       selectedMarble.current               = marble;
+
+      disableOtherMarbles.current          = true;
+
+      updateOpposingMarblesInPath(marble.whereCanMove);
     }
   }
- 
- function killOpposingMarbleInBoardPosition(boardPosition, currPlayer) {
-    for (const player of players) {
-      if (areOnOpposingTeams(player, currPlayer)) {
-        for (const marble of marbles[player]) {
-          if (isMarbleInBoardPosition(marble, boardPosition)) {
-            const homeStartLocation = getNextAvailableHomeStartLocation(marble.colour, marbles);
-  
-            marble.row = homeStartLocation[0];
-            marble.col = homeStartLocation[1];
+
+  function updateOpposingMarblesInPath(path) {
+    for (const boardPosition of path) {
+      for (const marblePlayer of players) {
+        for (const marble of marbles[marblePlayer]) {
+          if (areOnOpposingTeams(player.current, marblePlayer) && isMarbleInBoardPosition(marble, boardPosition)) {
+            marble.isInPathOfOpposingTeams7 = true;
           }
         }
       }
     }
+  }
+ 
+ function killOpposingMarbleInBoardPosition(boardPosition, currPlayer) {
+    for (const marblePlayer of players) {
+      if (areOnOpposingTeams(marblePlayer, currPlayer)) {
+        for (const marble of marbles[marblePlayer]) {
+          if (isMarbleInBoardPosition(marble, boardPosition)) {
+            killMarble(marble, marbles);
+          }
+        }
+      }
+    }
+  }
+
+  function killMarble(marble, marbles) {
+    const homeStartLocation = getNextAvailableHomeStartLocation(marble.colour, marbles);
+  
+    marble.row = homeStartLocation[0];
+    marble.col = homeStartLocation[1];
+
+    marble.isInPathOfOpposingTeams7 = false;
   }
 
   function killAllOpposingMarblesBetweenPositions(startPosition, endPosition, currPlayer) {
@@ -249,10 +304,8 @@ function MarblesGame() {
   }
 
   function resetWhereCanMoveLocations() {
-    let tempMarbles = {...marbles};
-
     for (const player of players) {
-       for (const marble of tempMarbles[player]) {
+       for (const marble of marbles[player]) {
           marble.whereCanMove = [];
           marble.allowUserToSelectWhereCanMove = false;
        }
@@ -292,6 +345,8 @@ function MarblesGame() {
       }
       index++;
     }
+
+    setHands({ ...hands });
   }
 
   function setNextPlayer() {
@@ -371,13 +426,13 @@ function MarblesGame() {
     <>
       <div className="game-area">
         <div className="hand-area">
-          <Hand currHand={hands[players[0]]} currTurn={player.current===players[0]} onCardClick={onCardClick}/>
-          <Hand currHand={hands[players[3]]} currTurn={player.current===players[3]} onCardClick={onCardClick}/>
+          <Hand currHand={hands[players[0]]} currTurn={player.current===players[0]} onCardClick={onCardClick} marbles={marbles} currPlayer={player.current}/>
+          <Hand currHand={hands[players[3]]} currTurn={player.current===players[3]} onCardClick={onCardClick} marbles={marbles} currPlayer={player.current}/>
         </div>
-        <Board marbles={marbles} onMarbleClick={onMarbleClick} onBoardPositionClick={onBoardPositionClick}/>
+        <Board marbles={marbles} onMarbleClick={onMarbleClick} onBoardPositionClick={onBoardPositionClick} disableOtherMarbles={disableOtherMarbles.current}/>
         <div className="hand-area">
-          <Hand currHand={hands[players[1]]} currTurn={player.current===players[1]} onCardClick={onCardClick}/>
-          <Hand currHand={hands[players[2]]} currTurn={player.current===players[2]} onCardClick={onCardClick}/>
+          <Hand currHand={hands[players[1]]} currTurn={player.current===players[1]} onCardClick={onCardClick} marbles={marbles} currPlayer={player.current}/>
+          <Hand currHand={hands[players[2]]} currTurn={player.current===players[2]} onCardClick={onCardClick} marbles={marbles} currPlayer={player.current}/>
         </div>
       </div>
       <div className="start-game-area">

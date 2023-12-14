@@ -1,11 +1,24 @@
 import CardComponent from './CardComponent'
+import calculateMoves from './Play';
+import { UpdateMarbles } from './GameSetup';
 
-export default function Hand({currHand, currTurn, onCardClick}) {
+export default function Hand({currHand, currTurn, onCardClick, marbles, currPlayer}) {
    const cards = [];
 
+   let atLeastOnePlayable = false;
+
    for (const card of currHand) {
+      const cardRank = card.getRank();
+
+      card.isPlayable = isPlayable(cardRank, marbles, currPlayer); // TODO - this seems dangerous. Is there a way to code this safer?
+
+      atLeastOnePlayable = atLeastOnePlayable || (card.isPlayable && cardRank !== "J"); // TODO - refactor this logic into a function
+   }
+
+   for (const [index, card] of currHand.entries()) {
       if (card) {
-         cards.push(<CardComponent card={card} currTurn={currTurn} onClick={onCardClick}></CardComponent>);
+         const playable = currTurn && (card.isPlayable || !atLeastOnePlayable);
+         cards.push(<CardComponent key={index} card={card} currTurn={currTurn} onClick={onCardClick} playable={playable}></CardComponent>);
       }
    }
 
@@ -14,4 +27,8 @@ export default function Hand({currHand, currTurn, onCardClick}) {
          {cards}
       </div>
    )
+}
+
+function isPlayable(cardRank, marbles, currPlayer) {
+   return calculateMoves(cardRank, currPlayer, marbles, UpdateMarbles.NO) > 0;
 }

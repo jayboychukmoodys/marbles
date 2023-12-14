@@ -11,7 +11,7 @@ const numCols = 19;
 // TODO - create a static 2D array for the board that contains all the static info (space type, space number). Ask chatGPT how to create a static data structure in react/javascript
 // TODO - create a map of the current marbles (key = "row-col", value = marble info) so when I'm rendering the Board I can just look up in O(1) any marble info for that board space
 
-export default function Board({marbles, onMarbleClick, onBoardPositionClick}) {
+export default function Board({marbles, onMarbleClick, onBoardPositionClick, disableOtherMarbles}) {
 
   const board = buildBoard(); // Can I refactor so the board is a constant and doesn't need to be kept as state? The marbles contain all the info needed to render where the marbles go?
 
@@ -23,7 +23,7 @@ export default function Board({marbles, onMarbleClick, onBoardPositionClick}) {
      let [spaceType, spaceColour, spaceNumber, spaceMarble, spaceAvailableForMarble] = getSpaceInfo(board, row, col);
 
       if (spaceMarble) {
-        spaces.push(<MarbleSpace key={`${row}-${col}`} color={`${spaceMarble.colour}-marble`} disabled={spaceMarble.whereCanMove.length === 0} onClick={() => onMarbleClick(spaceMarble)}/>);
+        spaces.push(<MarbleSpace key={`${row}-${col}`} color={`${spaceMarble.colour}-marble`} disabled={(spaceMarble.whereCanMove.length === 0 || disableOtherMarbles) && !spaceMarble.isInPathOfOpposingTeams7} onClick={() => onMarbleClick(spaceMarble)}/>);
       }
       else if (spaceType) {
         spaces.push(<Space key={`${row}-${col}`} type={spaceType} number={spaceNumber} colour={spaceColour} disabled={!spaceAvailableForMarble} onClick={() => onBoardPositionClick([row, col])}/> );
@@ -99,10 +99,10 @@ export function getHomeStartLocations(colour) {
   }
 }
 
-export function allMarblesInEndHome(colour, marbles) {
+export function allMarblesInEndHome(colour, currPlayerMarbles) {
   const homeEndLocations = getHomeEndLocations(colour);
 
-  return marbles.every((marble) => homeEndLocations.some(([row, col]) => row === marble.row && col === marble.col));
+  return currPlayerMarbles.every((marble) => homeEndLocations.some(([row, col]) => row === marble.row && col === marble.col));
 }
 
 export function getPlayingHomePositionWithColourInRange(startPosition, endPosition, currPlayer, isMovingForward) {
@@ -139,9 +139,7 @@ export function isSameBoardPosition(boardPosition1, boardPosition2) {
   const [row1, col1] = boardPosition1;
   const [row2, col2] = boardPosition2;
 
-  if (row1 === row2 && col1 === col2) return true;
-
-  return false;
+  return row1 === row2 && col1 === col2;
 }
 
 export function getNumSpacesBetween(boardPosition1, boardPosition2, currPlayer) {
@@ -160,8 +158,20 @@ export function getNumSpacesBetween(boardPosition1, boardPosition2, currPlayer) 
   return index2 - index1;
 }
 
-function isMarbleInOneOfBoardPositions(marble, boardPositions) {
+export function isMarbleInOneOfBoardPositions(marble, boardPositions) {
   return boardPositions.some(([row, col]) => marble.row === row && marble.col === col);
+}
+
+export function getNumAvailableSpacesInEndHome(currPlayer, marbles) {
+  let numAvailableSpaces = 4;
+
+  marbles.forEach((marble) => {
+    if (isMarbleInEndHome(marble)) {
+      numAvailableSpaces--;
+    }
+  });
+
+  return numAvailableSpaces;
 }
 
 function getIndexOfBoardPosition(boardPosition, boardPositions) {

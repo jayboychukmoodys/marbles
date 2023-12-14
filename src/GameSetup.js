@@ -36,3 +36,8 @@ export const players = [
   
   return player2 === "yellow" || player2 === "red";
  }
+
+ export const UpdateMarbles = {
+  YES: true,
+  NO: false
+};
