@@ -1,5 +1,5 @@
 import CardComponent from './CardComponent'
-import calculateMoves from './Play';
+import calculateMoves, { setCurrMarble } from './Play';
 import { UpdateMarbles } from './GameSetup';
 
 export default function Hand({currHand, currTurn, onCardClick, marbles, currPlayer}) {
@@ -30,5 +30,7 @@ export default function Hand({currHand, currTurn, onCardClick, marbles, currPlay
 }
 
 function isPlayable(cardRank, marbles, currPlayer) {
-   return calculateMoves(cardRank, currPlayer, marbles, UpdateMarbles.NO) > 0;
+   const currMarbleToMove = setCurrMarble(currPlayer, marbles[currPlayer]);
+
+   return calculateMoves(cardRank, currMarbleToMove, marbles, UpdateMarbles.NO) > 0;
 }

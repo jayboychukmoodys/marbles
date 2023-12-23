@@ -6,25 +6,23 @@ import { players, getTeammate, UpdateMarbles } from "./GameSetup";
 import { areEqual } from "./Marble"
 
 export default function calculateMoves (cardRank, currPlayer, marbles, updateMarbles) {
-   let currMarbleColourToMove = allMarblesInEndHome(currPlayer, marbles[currPlayer]) ? getTeammate(currPlayer) : currPlayer;
-
    let countPossibleMoves = 0;
 
    if (cardRank !== "J")
    {
       if (isOutCard(cardRank)) {
-         countPossibleMoves += calculateMovesFromStartHomeMarbles (currMarbleColourToMove, marbles, updateMarbles);
+         countPossibleMoves += calculateMovesFromStartHomeMarbles (currPlayer, marbles, updateMarbles);
       }
 
-      countPossibleMoves += calculateMovesFromMarblesInPlay (getNumSpacesCanMove(cardRank), currMarbleColourToMove, marbles, cardRank === "7", updateMarbles);
+      countPossibleMoves += calculateMovesFromMarblesInPlay (getNumSpacesCanMove(cardRank), currPlayer, marbles, cardRank === "7", updateMarbles);
 
       return countPossibleMoves;
    }
    else // cardRank === "J"
    {
-      const boardPositionsWithAMarble = getPlayingBoardPositionsWithAMarbleForJack(marbles, currMarbleColourToMove);
+      const boardPositionsWithAMarble = getPlayingBoardPositionsWithAMarbleForJack(marbles, currPlayer);
 
-      const countPossibleMoves = calculateMovesFromMarblesInPlayForJack(marbles, boardPositionsWithAMarble, currMarbleColourToMove, updateMarbles);
+      const countPossibleMoves = calculateMovesFromMarblesInPlayForJack(marbles, boardPositionsWithAMarble, currPlayer, updateMarbles);
 
       return countPossibleMoves;
    }
@@ -36,6 +34,10 @@ export function playRemainderOfCard (numSpaces, currPlayer, marbles) {
    const countPossibleMoves = calculateMovesFromMarblesInPlay (numSpaces, currMarbleColourToMove, marbles, true /*isCardASeven*/, UpdateMarbles.YES);
    
    return countPossibleMoves > 0;
+}
+
+export function setCurrMarble(currPlayer, currPlayerMarbles) {
+   return allMarblesInEndHome(currPlayer, currPlayerMarbles) ? getTeammate(currPlayer) : currPlayer;
 }
 
 function canMarbleBeMovedWithJack(marble, currPlayer) {
@@ -93,7 +95,7 @@ function isMarbleInStartHomeAndPlayable(marble, marbles, currPlayer) {
    return isMarbleInStartHome(marble) && !isBoardPositionOccupiedAndUnplayable(marbles, currPlayer, getHomePlayingLocation(currPlayer), true /*countTeammate*/);
 }
 
-function calculateMovesFromMarblesInPlay (numSpaces, currPlayer, marbles, isCardASeven, updateMarbles, isTeammatesMarbles = false) {
+function calculateMovesFromMarblesInPlay (numSpaces, currPlayer, marbles, isCardASeven, updateMarbles, isForTeammatesMarbles = false) {
    let countPossibleMoves = 0;
    let countMarblesThatMoveIntoEndHome = 0;
 
@@ -106,8 +108,14 @@ function calculateMovesFromMarblesInPlay (numSpaces, currPlayer, marbles, isCard
       }
 
       if (countPossibleMoves < numSpaces) {
-         if (isForOwnMarbles() && canMoveAllOwnMarblesIntoEndHome()) {
-            return calculateMovesFromMarblesInPlay (numSpaces - countPossibleMoves, getTeammate(currPlayer), marbles, isCardASeven, UpdateMarbles.NO, true /* isTeammatesMarbles */);
+         if (canMoveAllMarblesIntoEndHome(currPlayer)) {
+            const teammate = getTeammate(currPlayer);
+
+            if (!isForTeammatesMarbles && !allMarblesInEndHome(teammate, marbles[teammate])) {
+               return calculateMovesFromMarblesInPlay (numSpaces - countPossibleMoves, getTeammate(currPlayer), marbles, isCardASeven, UpdateMarbles.NO, true /* isForTeammatesMarbles */);
+            }
+
+            return countPossibleMoves;
          }
 
          return 0;
@@ -142,12 +150,8 @@ function calculateMovesFromMarblesInPlay (numSpaces, currPlayer, marbles, isCard
       }
    }
 
-   function isForOwnMarbles() {
-      return !isTeammatesMarbles;
-   }
-
-   function canMoveAllOwnMarblesIntoEndHome() {
-      return countMarblesThatMoveIntoEndHome === getNumAvailableSpacesInEndHome(currPlayer, marbles[currPlayer]);
+   function canMoveAllMarblesIntoEndHome(player) {
+      return countMarblesThatMoveIntoEndHome === getNumAvailableSpacesInEndHome(player, marbles[player]);
    }
 }
 

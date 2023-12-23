@@ -4,6 +4,12 @@
 
 .game-area {
   display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.display-turn {
+  
 }
 
 .hand-area {

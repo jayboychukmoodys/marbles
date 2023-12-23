@@ -1,7 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import './styles.css';
 import Board, { getHomeStartLocations, allMarblesInEndHome, getNumSpacesBetween, getAllPlayingPositionsInRange } from './Board'
-import calculateMoves, { playRemainderOfCard } from './Play'
+import calculateMoves, { playRemainderOfCard, setCurrMarble } from './Play'
 import { players, getNextPlayer, getTeammate, areOnOpposingTeams, UpdateMarbles } from './GameSetup'
 import { areEqual } from './Marble'
 import Card, { areEqualCards } from './Card'
@@ -49,19 +49,28 @@ const dealingSequence = [5, 4, 4];
 
 function MarblesGame() {
 
-  const [marbles, setMarbles]         = useState(initialMarbles);
-  const [hands, setHands]             = useState(initialHands);
+  const [marbles, setMarbles]     = useState({...initialMarbles});
+  const [hands, setHands]         = useState({...initialHands});
+  const [winner, setWinner]       = useState(null);
 
-  const player          = useRef("green");
-  const deck            = useRef(new Deck());
-  const dealNum         = useRef(0);
-  const dealer          = useRef("yellow");
-  const selectedMarble  = useRef(null);
-  const playedCard      = useRef(null);
-  const spacesLeftIn7   = useRef(0); // TODO - refactor this. Shouldn't be this dependency bt playedCard and spacesLeftIn7
+  const player              = useRef("green"); // should be used for anything specific to a player, regardless of whether they're playing their teammates marbles or not
+  const currMarble          = useRef(setCurrMarble(player.current, marbles[player.current])); // should be used for the marbles that currPlayer is operating on
+  const deck                = useRef(new Deck());
+  const dealNum             = useRef(0);
+  const dealer              = useRef("yellow");
+  const selectedMarble      = useRef(null);
+  const playedCard          = useRef(null);
+  const spacesLeftIn7       = useRef(0); // TODO - refactor this. Shouldn't be this dependency bt playedCard and spacesLeftIn7
   const disableOtherMarbles = useRef(false);
 
+  useEffect(() => {
+    currMarble.current = setCurrMarble(player.current, marbles[player.current]);
+  }, [marbles]);
+  
   function startGame() {
+    setMarbles(initialMarbles);
+    setHands({...initialHands});
+    setWinner(null);
     resetDealAndDeck("yellow");
     dealCards();
   }
@@ -74,8 +83,17 @@ function MarblesGame() {
     marbles["green"][2].col = 15;
     marbles["green"][3].row = 9;
     marbles["green"][3].col = 16;
-    marbles["green"][0].row = 8;
-    marbles["green"][0].col = 18;
+    marbles["green"][0].row = 9;
+    marbles["green"][0].col = 13;
+
+    marbles["blue"][1].row = 9;
+    marbles["blue"][1].col = 3;
+    marbles["blue"][2].row = 9;
+    marbles["blue"][2].col = 4;
+    marbles["blue"][3].row = 9;
+    marbles["blue"][3].col = 5;
+    marbles["blue"][0].row = 10;
+    marbles["blue"][0].col = 0;
 
     setMarbles({...marbles});
 
@@ -98,7 +116,7 @@ function MarblesGame() {
 
       if (cardRank === "7") spacesLeftIn7.current = 7;
 
-      calculateMoves(cardRank, player.current, marbles, UpdateMarbles.YES);
+      calculateMoves(cardRank, currMarble.current, marbles, UpdateMarbles.YES);
 
       removeCardFromHand(card, hands[player.current]);
 
@@ -143,6 +161,8 @@ function MarblesGame() {
       }
     }
 
+    checkForWinner();
+
     setMarbles({...marbles});
   }
 
@@ -162,19 +182,21 @@ function MarblesGame() {
     selectedMarble.current.row = position[0];
     selectedMarble.current.col = position[1];
 
-    killAllOpposingMarblesBetweenPositions(oldPosition, position, player.current, marbles);
+    killAllOpposingMarblesBetweenPositions(oldPosition, position, currMarble.current, marbles);
 
-    spacesLeftIn7.current -= getNumSpacesBetween(oldPosition, position, player.current);
+    spacesLeftIn7.current -= getNumSpacesBetween(oldPosition, position, currMarble.current);
 
     resetWhereCanMoveLocations();
 
     selectedMarble.current = null;
     disableOtherMarbles.current = false;
 
+    currMarble.current = setCurrMarble(player.current, marbles[player.current]);
+
     // TODO: ASSERT (spacesLeftIn7.current >= 0);
 
     if (spacesLeftIn7.current > 0) {
-      const isCardPlayable = playRemainderOfCard(spacesLeftIn7.current, player.current, marbles);
+      const isCardPlayable = playRemainderOfCard(spacesLeftIn7.current, currMarble.current, marbles);
       
       if (isCardPlayable) {
         setMarbles({...marbles});
@@ -266,7 +288,7 @@ function MarblesGame() {
     for (const boardPosition of path) {
       for (const marblePlayer of players) {
         for (const marble of marbles[marblePlayer]) {
-          if (areOnOpposingTeams(player.current, marblePlayer) && isMarbleInBoardPosition(marble, boardPosition)) {
+          if (areOnOpposingTeams(currMarble.current, marblePlayer) && isMarbleInBoardPosition(marble, boardPosition)) {
             marble.isInPathOfOpposingTeams7 = true;
           }
         }
@@ -350,7 +372,9 @@ function MarblesGame() {
   }
 
   function setNextPlayer() {
-    player.current = getNextPlayer(player.current);
+    player.current     = getNextPlayer(player.current);
+    
+    currMarble.current = setCurrMarble(player.current, marbles[player.current]);
   }
 
   function prepareNextTurn() {
@@ -399,8 +423,7 @@ function MarblesGame() {
 
   function checkForWinner() {
     if (allMarblesInEndHome(player.current, marbles[player.current]) && allMarblesInEndHome(getTeammate(player.current), marbles[getTeammate(player.current)])) {
-      // TODO - display winning team
-      // TODO - end game
+      setWinner(`${capitalizeFirstLetter(player.current)} and ${capitalizeFirstLetter(getTeammate(player.current))} win!`);
     }
   }
 
@@ -421,18 +444,33 @@ function MarblesGame() {
   function selectingFirstMarbleForJack() {
     return selectedMarble.current === null;
   }
+
+  function capitalizeFirstLetter(str) {
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  }
   
   return (
     <>
       <div className="game-area">
+        <div className="display-turn">
+          {winner || `${capitalizeFirstLetter(player.current)}'s turn!`}
+        </div>
         <div className="hand-area">
-          <Hand currHand={hands[players[0]]} currTurn={player.current===players[0]} onCardClick={onCardClick} marbles={marbles} currPlayer={player.current}/>
-          <Hand currHand={hands[players[3]]} currTurn={player.current===players[3]} onCardClick={onCardClick} marbles={marbles} currPlayer={player.current}/>
+          {winner === null && (
+            <>
+            <Hand currHand={hands[players[0]]} currTurn={player.current===players[0]} onCardClick={onCardClick} marbles={marbles} currPlayer={player.current}/>
+            <Hand currHand={hands[players[3]]} currTurn={player.current===players[3]} onCardClick={onCardClick} marbles={marbles} currPlayer={player.current}/>
+            </>
+          )}
         </div>
         <Board marbles={marbles} onMarbleClick={onMarbleClick} onBoardPositionClick={onBoardPositionClick} disableOtherMarbles={disableOtherMarbles.current}/>
         <div className="hand-area">
-          <Hand currHand={hands[players[1]]} currTurn={player.current===players[1]} onCardClick={onCardClick} marbles={marbles} currPlayer={player.current}/>
-          <Hand currHand={hands[players[2]]} currTurn={player.current===players[2]} onCardClick={onCardClick} marbles={marbles} currPlayer={player.current}/>
+          {winner === null && (
+            <>
+            <Hand currHand={hands[players[1]]} currTurn={player.current===players[1]} onCardClick={onCardClick} marbles={marbles} currPlayer={player.current}/>
+            <Hand currHand={hands[players[2]]} currTurn={player.current===players[2]} onCardClick={onCardClick} marbles={marbles} currPlayer={player.current}/>
+            </>
+          )}
         </div>
       </div>
       <div className="start-game-area">
